@@ -50,7 +50,8 @@ UA = {"User-Agent": "RangeCraft (github.com/PollockLab/rangecraft)"}
 
 def get(url, **kw):
     time.sleep(0.5)
-    r = requests.get(url, headers=UA, timeout=120, **kw)
+    # ScienceBase answers a custom User-Agent with a Cloudflare challenge (403), the requests default gets JSON.
+    r = requests.get(url, headers=None if url.startswith(SB) else UA, timeout=120, **kw)
     r.raise_for_status()
     return r
 

@@ -67,3 +67,17 @@ def test_edits_of_published_outlines_are_not_source():
     assert imported_source({"author": "USGS GAP", "basis": "official-patch", "derived_from": "USGS GAP"}) is None
     assert imported_source({"author": "Ann", "basis": "expert-outline-edit",
                             "derived_from": "USGS GAP 2020, data/ranges/1/x.geojson"}) is None
+
+
+def test_sciencebase_gets_the_default_user_agent(monkeypatch):
+    seen = {}
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(ir.time, "sleep", lambda s: None)
+    monkeypatch.setattr(ir.requests, "get", lambda url, headers, timeout: seen.update({url: headers}) or Resp())
+    ir.get(ir.SB + "items")
+    ir.get(ir.GBIF_MATCH)
+    assert seen == {ir.SB + "items": None, ir.GBIF_MATCH: ir.UA}
