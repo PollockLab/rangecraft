@@ -28,8 +28,8 @@ Run the site locally with `python3 -m http.server` and open http://localhost:800
 ## Data sources and licences
 
 - Contributed ranges: CC BY 4.0, see [DATA_LICENSE.md](DATA_LICENSE.md). Code: MIT, see [LICENSE](LICENSE).
-- Imported ranges: USGS GAP (US public domain) and Fisheries and Oceans Canada species at risk (Open Government Licence - Canada). Each source is its own range file and its own voter.
-- Not imported, link only or reference only: IUCN, BirdLife, NatureServe, iNaturalist taxon ranges, and the ECCC/IUCN outline shown for reference. Their terms do not allow republishing as CC BY 4.0, or could not be confirmed.
+- Imported ranges: USGS GAP (US public domain), Fisheries and Oceans Canada species at risk (Open Government Licence - Canada) and NatureServe Canada EBAR (CC BY 4.0). Each source is its own range file and its own voter.
+- Not imported, link only or reference only: IUCN, BirdLife, NatureServe Explorer, iNaturalist taxon ranges, and the ECCC/IUCN outline shown for reference. Their terms do not allow republishing as CC BY 4.0, or could not be confirmed.
 - Occurrences come from [GBIF](https://www.gbif.org). Basemap by OpenFreeMap and OpenStreetMap contributors.
 
 Per-source licences, citations and what was checked are in [docs/SOURCES.md](docs/SOURCES.md).
@@ -41,9 +41,9 @@ RangeCraft is not part of the IUCN Red List process and does not change any Red 
 ## Limits
 
 - GBIF records are biased toward places and taxa that people visit and report. A range can look wrong against GBIF because of where observers go, not where the species is.
-- USGS GAP ranges cover the conterminous United States only. A GAP range that stops at the Canadian border means not mapped, not absent.
+- USGS GAP ranges cover the conterminous United States only. A GAP range that stops at the Canadian border means not mapped, not absent. National-scope NatureServe Canada EBAR ranges are the mirror: they cover Canada only.
 - Scoring needs time. Only records dated after a range was merged count, so a new range shows no skill until records dated after the merge reach GBIF. The code sets no minimum number of records, so scores from few records are noisy.
-- Range check counts records against a range, so it inherits GBIF's sampling bias: blue bins often mean nobody has looked. Against a source with a coverage note (USGS GAP) it compares only inside that coverage.
+- Range check counts records against a range, so it inherits GBIF's sampling bias: blue bins often mean nobody has looked. Against a source with a coverage note (USGS GAP, national-scope EBAR) it compares only inside that coverage.
 - A score measures agreement with new records, not whether a range is correct or complete. Range maps are outlines of extent, and a species is absent from many places inside its range.
 
 ## Documentation

@@ -35,7 +35,7 @@ Yes. An export records the source a copy was derived from (for example the commu
 
 Range check counts GBIF records in square bins against the range it names in the summary ("vs official outline", "vs your draft", or the ticked source such as "vs USGS GAP"). Red bins have records outside the range, so the range may be too small, or some records are misidentified. Blue bins are inside the range with no records yet, which usually reflects sampling effort or habitat, not absence. A high red share can come from where observers go.
 
-Coverage matters too. A source with a coverage note, such as USGS GAP (conterminous US only), is compared only inside that area, approximated by a box. Bins outside it are hatched grey, meaning not mapped by this source, and are left out of the percentages. Records in Canada are therefore not counted against a GAP range.
+Coverage matters too. A source with a coverage note, such as USGS GAP (conterminous US only) or a national-scope NatureServe Canada EBAR range (Canada only), is compared only inside that area, approximated by a box. Bins outside it are hatched grey, meaning not mapped by this source, and are left out of the percentages. Records in Canada are therefore not counted against a GAP range.
 When the species has a habitat model (the Habitat model layer, from openbiodiversity.ca), each bin is also scored for suitability. "Suitable" means a score at least as high as the one 90% of in-range bins with records reach. The summary states this threshold. Bins are then split further:
 
 - Red: records outside the range in suitable habitat. The range is likely too small.
