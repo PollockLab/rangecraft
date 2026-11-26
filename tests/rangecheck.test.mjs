@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bbox, inside, pickZoom, addTile, binSize, classify, sdmNote, sampler, bin, verdict, summaryItems, summaryTip, cellArea, surveyCsv, gbifCellUrl, inatCellUrl, inatIdentifyUrl, outsideLine, cellsIn, CONUS } from '../src/rangecheck.js';
+import { bbox, inside, pickZoom, addTile, binSize, classify, sdmNote, sampler, bin, verdict, summaryItems, summaryTip, cellArea, surveyCsv, gbifCellUrl, inatCellUrl, inatIdentifyUrl, outsideLine, cellsIn, CONUS, CANADA, coverageOf } from '../src/rangecheck.js';
 
 const sq = (w, s, e, n) => [[w, s], [e, s], [e, n], [w, n], [w, s]];
 const fc = (...rings) => ({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: rings } }] });
@@ -84,6 +84,23 @@ test('CONUS coverage excludes Ontario and Ottawa but keeps Chicago and Ohio', ()
   const t = inside(CONUS);
   assert.ok(!t(-80, 46.5) && !t(-75.7, 45.4));
   assert.ok(t(-87.6, 41.9) && t(-83, 40) && t(-93, 46));
+});
+
+test('Canada coverage mirrors CONUS along the border and leaves out Alaska and Greenland', () => {
+  const t = inside(CANADA), us = inside(CONUS);
+  for (const p of [[-80, 46.5], [-75.7, 45.4], [-123.1, 49.3], [-63.6, 44.6], [-52.7, 47.6], [-135, 60.7], [-85, 79]]) assert.ok(t(...p) && !us(...p), `${p}`);
+  for (const p of [[-87.6, 41.9], [-93, 46], [-149.9, 61.2], [-134.4, 58.3], [-51.7, 64.2]]) assert.ok(!t(...p), `${p}`);
+});
+
+test('coverageOf restricts only when every range names a known coverage area', () => {
+  const r = a => ({ properties: a ? { coverage_area: a } : {}, features: [] });
+  assert.equal(coverageOf([]), null);
+  assert.equal(coverageOf([r('conterminous-us'), r()]), null);
+  assert.equal(coverageOf([r('mars')]), null);
+  assert.deepEqual(coverageOf([r('canada')]), { area: CANADA, label: 'Canada' });
+  const both = coverageOf([r('conterminous-us'), r('canada'), r('canada')]);
+  assert.equal(both.label, 'conterminous US + Canada');
+  assert.ok(inside(both.area)(-93, 46) && inside(both.area)(-75.7, 45.4) && !inside(both.area)(-149.9, 61.2));
 });
 
 // Habitat suitability on the 2-degree grid above (range lon 0..10, lat 80..90).

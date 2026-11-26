@@ -1,7 +1,19 @@
 // Range check: compare GBIF's native square bins with a range. Pure logic, no DOM or network.
 export const COLORS = { outside: '#d62828', outsideLow: '#8c3b3b', gap: '#1d6fd1', lowgap: '#9aa5b1', survey: '#00a39a', unmapped: '#8a8a8a' };
-// shortcut: conterminous US as a coarse ring (24.5-49 N, -125 to -66.9 W, with the Great Lakes border cut in so southern Ontario and Quebec fall outside). Upgrade to a real outline if edge bins matter.
-export const CONUS = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[-125, 24.5], [-125, 48.4], [-123, 49], [-95.2, 49], [-94.6, 48.7], [-89.6, 48], [-84.5, 46.5], [-82.4, 43], [-83.1, 42], [-79, 42.8], [-79, 43.3], [-76.5, 43.6], [-75, 45], [-71.5, 45], [-70.3, 46.4], [-69.2, 47.4], [-67.8, 47.1], [-67, 44.8], [-66.9, 24.5], [-125, 24.5]]] } }] };
+// shortcut: coverage areas are coarse rings sharing one border line (Great Lakes cut in, so southern Ontario and Quebec are Canada). Upgrade to real outlines if edge bins matter.
+const BORDER = [[-125, 48.4], [-123, 49], [-95.2, 49], [-94.6, 48.7], [-89.6, 48], [-84.5, 46.5], [-82.4, 43], [-83.1, 42], [-79, 42.8], [-79, 43.3], [-76.5, 43.6], [-75, 45], [-71.5, 45], [-70.3, 46.4], [-69.2, 47.4], [-67.8, 47.1], [-67, 44.8]];
+const ring = pts => ({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[...pts, pts[0]]] } }] });
+// Conterminous US: 24.5-49 N, -125 to -66.9 W.
+export const CONUS = ring([[-125, 24.5], ...BORDER, [-66.9, 24.5]]);
+// Canada with its waters: Atlantic out to -47, the Greenland side through Davis and Nares straits, Alaska cut along 141 W and the panhandle.
+export const CANADA = ring([...BORDER, [-66, 42], [-47, 42], [-47, 55], [-59, 66], [-74, 76], [-73, 78.5], [-60, 82.5], [-60, 85], [-141, 85], [-141, 60.3], [-137.5, 58.9], [-135, 59.7], [-133.4, 58.4], [-130, 56], [-130.6, 54.7], [-134, 54.4], [-139, 51], [-134, 47]]);
+// coverage_area of a range file -> where its source maps. Notes are in scripts/import_ranges.py COVERAGE.
+export const COVERAGE = { 'conterminous-us': { area: CONUS, label: 'conterminous US' }, canada: { area: CANADA, label: 'Canada' } };
+// { area, label } to restrict a check to, or null: every compared range must name a known coverage area, since one full-extent range makes records anywhere meaningful.
+export function coverageOf(fcs) {
+  const cs = [...new Set(fcs.map(fc => COVERAGE[fc.properties?.coverage_area]))];
+  return fcs.length && cs.every(Boolean) ? { area: { type: 'FeatureCollection', features: cs.flatMap(c => c.area.features) }, label: cs.map(c => c.label).join(' + ') } : null;
+}
 export const SQUARE = 128; // GBIF bin size in 4096-unit tile pixels
 const ZOOMS = [4, 3, 2]; // finest first; bins are 360 / 2^(z+1) * SQUARE / 4096 degrees
 export const binSize = z => (360 / 2 ** (z + 1)) * (SQUARE / 4096);

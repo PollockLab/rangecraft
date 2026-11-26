@@ -39,16 +39,14 @@ export function initRangeCheck({ map, state, onChange, drawing, draft = () => []
     $('rc-targets').hidden = true;
     onChange();
   }
-  // What the check compares against: { fc, ref, coverage }. A drawing wins, then the official outline, then the ticked community ranges.
+  // What the check compares against: { fc, ref, coverage: { area, label } | null }. A drawing wins, then the official outline, then the ticked community ranges.
   async function reference() {
     const mine = draft();
     if (mine.length) return { fc: { type: 'FeatureCollection', features: mine }, ref: 'your draft' };
     if (state.official?.fc) return { fc: state.official.fc, ref: 'official outline' };
     const boxes = [...document.querySelectorAll('#versions input:checked')];
     const fcs = await Promise.all(boxes.map(b => loadRange(b.dataset.file)));
-    // Restrict only when every compared range has a coverage note; one full-extent range makes records anywhere meaningful.
-    const covered = fcs.length > 0 && fcs.every(fc => fc.properties?.coverage);
-    return { fc: { type: 'FeatureCollection', features: fcs.flatMap(fc => fc.features ?? []) }, ref: [...new Set(boxes.map(b => b.dataset.author))].join(' + '), coverage: covered ? rc.CONUS : null };
+    return { fc: { type: 'FeatureCollection', features: fcs.flatMap(fc => fc.features ?? []) }, ref: [...new Set(boxes.map(b => b.dataset.author))].join(' + '), coverage: rc.coverageOf(fcs) };
   }
   // GBIF occurrence bins over a box: { size, tiles, counts }. Stops early when stale() turns true.
   async function binCounts(box, taxon, mode, stale, progress) {
@@ -70,8 +68,8 @@ export function initRangeCheck({ map, state, onChange, drawing, draft = () => []
     const stale = () => state.taxon !== taxon;
     const { size, counts } = await binCounts(box, taxon, filter(), stale, () => {});
     if (stale()) return null;
-    // Same coverage rule as the full check: records beyond a CONUS-only range's coverage are unmapped, not outside.
-    return rc.classify(counts, fc, size, { coverage: fc.properties?.coverage ? rc.CONUS : null }).cells.filter(c => c.status === 'outside').length;
+    // Same coverage rule as the full check: records beyond a partial source's coverage are unmapped, not outside.
+    return rc.classify(counts, fc, size, { coverage: rc.coverageOf([fc])?.area }).cells.filter(c => c.status === 'outside').length;
   }
   // Grid cells with records whose centre falls inside fc (null if the species changed meanwhile); honours the Records filter.
   async function recordsIn(fc) {
@@ -97,7 +95,7 @@ export function initRangeCheck({ map, state, onChange, drawing, draft = () => []
         suit = await loadSuit(state.official.slug, rc.tilesBox(tiles, size)); why = suit ? 'ok' : 'unreadable';
         if (stale()) return;
       }
-      const res = rc.classify(counts, fc, size, { coverage, suit }), inRange = rc.inside(fc);
+      const res = rc.classify(counts, fc, size, { coverage: coverage?.area, suit }), inRange = rc.inside(fc);
       // Bin centres (not records) inside the range: GBIF bins are coarse, so the AOO built from them is a screening lower bound.
       pts = [...counts].filter(([, n]) => n > 0).map(([k]) => rc.centre(...k.split(',').map(Number), size)).filter(c => inRange(...c));
       threshold = res.threshold; LABELS = threshold == null ? PLAIN : HABITAT;
@@ -112,7 +110,7 @@ export function initRangeCheck({ map, state, onChange, drawing, draft = () => []
         'fill-color': ['match', ['get', 'status'], 'outside', rc.COLORS.outside, 'outsideLow', rc.COLORS.outsideLow, 'lowgap', rc.COLORS.lowgap, 'survey', rc.COLORS.survey, rc.COLORS.gap],
         // red fades for stray records: 1-2 records are faint, 100+ solid
         'fill-opacity': ['case', ['in', ['get', 'status'], ['literal', ['gap', 'lowgap', 'survey']]], 0.3, ['interpolate', ['linear'], ['get', 'count'], 1, 0.12, 3, 0.3, 10, 0.5, 100, 0.75]] } }, 'occ');
-      const covered = coverage && 'conterminous US', sum = $('rc-summary'), list = document.createElement('ul');
+      const covered = coverage?.label, sum = $('rc-summary'), list = document.createElement('ul');
       list.replaceChildren(...rc.summaryItems(res).map(t => Object.assign(document.createElement('li'), { textContent: t })));
       sum.replaceChildren(Object.assign(document.createElement('em'), { textContent: 'Rough guide: gaps often mean nobody has looked there yet.' }), document.createElement('br'), Object.assign(document.createElement('strong'), { textContent: rc.verdict(res, [ref, rc.RECORD_NOTE[mode] && `based on ${rc.RECORD_NOTE[mode]}`].filter(Boolean).join(', ')) }), list);
       sum.title = rc.summaryTip(res, covered, why);
