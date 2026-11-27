@@ -28,6 +28,7 @@ from rangelib import IOU_DUPLICATE, ROOT, RangeError, area_km2, iou, load_range,
 SITE = "https://pollocklab.github.io/rangecraft/"
 MARKER = "<!-- rangecraft-review -->"
 MAX_GEOJSON = 50_000  # GitHub comments cap at 65,536 characters
+MAX_BODY = 60_000  # margin for GitHub counting UTF-16 units, where emoji take two
 STYLE = {
     "added": {"fill": "#2e9e44", "stroke": "#1f6e2f", "fill-opacity": 0.55},
     "removed": {"fill": "#d1342f", "stroke": "#8f1d1a", "fill-opacity": 0.55},
@@ -254,17 +255,26 @@ def section(path: str, head: str, base: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def join_capped(head: str, sections: list[str]) -> str:
+    """head and sections joined; whole sections are dropped from the end to stay under MAX_BODY."""
+    body, kept = head, 0
+    for sec in sections:
+        if len(body) + 2 + len(sec) > MAX_BODY - 200:  # room for the note
+            body += f"\n\n_Truncated to fit GitHub's comment size limit: {len(sections) - kept} of {len(sections)} files are not shown._"
+            break
+        body, kept = f"{body}\n\n{sec}", kept + 1
+    return body
+
+
 def main(argv: list[str]) -> int:
     base, head = argv[1], argv[2]
     paths = changed_ranges(base, head)
     if not paths:
         return 0
-    body = "\n\n".join(
-        [
-            MARKER + "\n## Range review\n\nGreen is added, red removed, grey kept. "
-            "Drag and zoom the maps; areas are geodesic."
-        ]
-        + [section(p, head, base) for p in paths]
+    body = join_capped(
+        MARKER + "\n## Range review\n\nGreen is added, red removed, grey kept. "
+        "Drag and zoom the maps; areas are geodesic.",
+        [section(p, head, base) for p in paths],
     )
     if len(argv) > 3:
         Path(argv[3]).write_text(body)

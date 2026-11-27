@@ -54,3 +54,13 @@ def test_records_skips_empty_and_survives_gbif_outage(monkeypatch):
 
     monkeypatch.setattr(review, "gbif_count", down)
     assert review.records(1, box(0, 0, 1, 1)) == "–"
+
+
+def test_join_capped_keeps_whole_sections_under_limit():
+    small = ["a" * 10, "b" * 10]
+    assert review.join_capped("H", small) == "H\n\n" + "\n\n".join(small)
+    assert review.join_capped("H", []) == "H"
+    big = ["x" * 25_000] * 4
+    out = review.join_capped("H", big)
+    assert len(out) < 65_536 and out.count("x" * 25_000) == 2
+    assert out.endswith("2 of 4 files are not shown._")
