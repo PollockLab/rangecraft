@@ -97,7 +97,7 @@ Expertise (`scripts/expertise.py`) is a separate, external record: iNaturalist r
 - Taxonomic synonyms. Counts use one GBIF `taxonKey` per range. Records filed under other names, splits, lumps or misidentifications are counted only to the extent GBIF assigns them to that key. Matching a species to the official outline is done by name, so a synonym mismatch can leave a species without one (`outline_slug`, `consensus.py`).
 - Outline versus occurrence. Range maps are extent-of-occurrence outlines. A species is absent from many places inside its range, and an occurrence record outside it is not proof the map is wrong. Hurlbert and Jetz 2007 show that range maps match occurrence only at coarse resolution, and Merow et al. 2017 argue for combining expert maps with point records because each has different biases.
 - Window effects. Skill depends on the window, which depends on the other ranges for the species.
-- Coverage. USGS GAP ranges cover the conterminous United States only.
+- Coverage. USGS GAP ranges cover the conterminous United States only, and national-scope NatureServe Canada EBAR ranges cover Canada only.
 
 ## References
 

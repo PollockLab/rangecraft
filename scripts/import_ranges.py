@@ -1,9 +1,10 @@
 """Import real range polygons into data/ranges/<GBIF taxonKey>/<source>.geojson.
 
 Only sources whose licence allows CC BY 4.0 republishing are imported as geometry (see
-docs/SOURCES.md): USGS GAP (US public domain) and DFO aquatic species at risk (OGL-Canada).
+docs/SOURCES.md): USGS GAP (US public domain), DFO aquatic species at risk (OGL-Canada) and
+NatureServe Canada EBAR (CC BY 4.0).
 iNaturalist taxon ranges are often IUCN-derived and their licence is not exposed by the API, so
-they are only linked, in data/references.json. Existing taxa are kept unless --force.
+they are only linked, in data/references.json. Existing source files are kept unless --force.
 --offline does nothing (CI fallback).
 """
 from __future__ import annotations
@@ -32,6 +33,7 @@ GBIF_MATCH = "https://api.gbif.org/v1/species/match"
 SB = "https://www.sciencebase.gov/catalog/"
 DFO = ("https://egisp.dfo-mpo.gc.ca/arcgis/rest/services/open_data_donnees_ouvertes/"
        "dfo_sara_distribution/MapServer/0/query")
+EBAR = ("https://gis.natureserve.ca/arcgis/rest/services/EBAR-KBA/EBARPublic/FeatureServer/1/query")
 CKAN = "https://open.canada.ca/data/api/action/package_show?id=e0fabad5-9379-4077-87b9-5705f28c490b"
 REFERENCES = ROOT / "data" / "references.json"
 MAX_BYTES = 450_000
@@ -44,13 +46,20 @@ GAP_TAXA = [
     "Cyanocitta cristata",
 ]
 DFO_TAXA = ["Enhydra lutris", "Eumetopias jubatus", "Dermochelys coriacea"]
-GAP_COVERAGE = "Conterminous US only. Absence north of the border means not mapped, not absent."
+# Exact binomials with an EBAR range map. Never match by synonym or genus + species of a longer name.
+EBAR_TAXA = ["Chelydra serpentina"]
+# coverage_area -> note. src/rangecheck.js COVERAGE holds the matching areas.
+COVERAGE = {
+    "conterminous-us": "Conterminous US only. Absence north of the border means not mapped, not absent.",
+    "canada": "Canada only. Absence outside Canada means not mapped, not absent.",
+}
 UA = {"User-Agent": "RangeCraft (github.com/PollockLab/rangecraft)"}
 
 
 def get(url, **kw):
     time.sleep(0.5)
-    r = requests.get(url, headers=UA, timeout=120, **kw)
+    # ScienceBase answers a custom User-Agent with a Cloudflare challenge (403), the requests default gets JSON.
+    r = requests.get(url, headers=None if url.startswith(SB) else UA, timeout=120, **kw)
     r.raise_for_status()
     return r
 
@@ -111,11 +120,11 @@ def fit(geom, tol: float, min_area: float, to4326=lambda g: g) -> dict:
     raise RangeError("cannot simplify below size limit")
 
 
-def doc(name, key, geometry, author, created, sources, lic):
+def doc(name, key, geometry, author, created, sources, lic, coverage=None):
     return {"type": "FeatureCollection",
             "properties": {"taxonKey": key, "scientificName": name, "author": author, "created": created, "basis": "new",
                            "derived_from": author, "derived_from_license": lic, "sources": sources,
-                           **({"coverage": GAP_COVERAGE} if author == "USGS GAP" else {})},
+                           **({"coverage": COVERAGE[coverage], "coverage_area": coverage} if coverage else {})},
             "features": [{"type": "Feature", "properties": {}, "geometry": geometry}]}
 
 
@@ -131,23 +140,23 @@ def gap(name: str, _meta=None):
     geometry = fit(geom, 3000, 20e6, lambda g: shapely.transform(g, lambda c: np.column_stack(t.transform(c[:, 0], c[:, 1]))))
     src = (f"{item['citation']} Item: {SB}item/{item['id']}. Range of the conterminous United States "
            "only (GAP does not map Canada or Alaska). Simplified (about 3 km) from HUC12 units, holes filled.")
-    return geometry, publication_date(item), src, "USGS GAP", "US-PD", "usgs-gap"
+    return geometry, publication_date(item), src, "USGS GAP", "US-PD", "usgs-gap", "conterminous-us"
 
 
-def dfo_features(name: str) -> list[dict]:
-    """All features for a species, paged past the server's 2000-record limit."""
+def arcgis_features(url: str, where: str, fields: str, oid: str) -> list[dict]:
+    """All GeoJSON features matching where, in EPSG:4326, paged past the server's record limit."""
     out = []
     while True:
-        d = get(DFO, params={"where": f"SCIENTIFIC='{name}'", "outFields": "SCIENTIFIC", "outSR": 4326,
-                             "geometryPrecision": 4, "f": "geojson", "resultOffset": len(out),
-                             "resultRecordCount": 1000, "orderByFields": "OBJECTID"}).json()
-        out += d.get("features", [])
-        if not d.get("features") or not d.get("exceededTransferLimit"):
+        page = get(url, params={"where": where, "outFields": fields, "outSR": 4326,
+                                "geometryPrecision": 4, "f": "geojson", "resultOffset": len(out),
+                                "resultRecordCount": 1000, "orderByFields": oid}).json().get("features", [])
+        out += page
+        if len(page) < 1000:
             return out
 
 
 def dfo(name: str, meta: dict):
-    feats = dfo_features(name)
+    feats = arcgis_features(DFO, f"SCIENTIFIC='{name}'", "SCIENTIFIC", "OBJECTID")
     if not feats:
         raise RangeError(f"DFO returned no features for {name}")
     geom = unary_union([shape(f["geometry"]).buffer(0) for f in feats])
@@ -155,7 +164,34 @@ def dfo(name: str, meta: dict):
     src = (f"Fisheries and Oceans Canada, Species at Risk Distribution (Range), {meta['url']}. "
            "Contains information licensed under the Open Government Licence - Canada. "
            "Union of all SARA populations. Simplified, holes filled.")
-    return geometry, meta["date"], src, "Fisheries and Oceans Canada", "OGL-Canada-2.0", "dfo-sara"
+    return geometry, meta["date"], src, "Fisheries and Oceans Canada", "OGL-Canada-2.0", "dfo-sara", None
+
+
+def pick_ebar_map(feats: list[dict]) -> list[dict]:
+    """Ecoshapes of one range map: global scope before national, then the newest rangedate."""
+    best = max(feats, key=lambda f: (f["properties"]["rangemapscope"] == "G", f["properties"]["rangedate"] or 0))
+    return [f for f in feats if f["properties"]["rangemapid"] == best["properties"]["rangemapid"]]
+
+
+def ebar(name: str, _meta=None):
+    feats = arcgis_features(EBAR, f"national_scientific_name='{name}'",
+                            "rangemapid,presence,rangemapscope,rangedate,rangestage,natureserveexplorerurl", "row_number")
+    if not feats:
+        raise RangeError(f"EBAR has no range map for {name}")
+    feats = pick_ebar_map(feats)
+    p = feats[0]["properties"]
+    # Present (P) and expected (X) ecoshapes are the range. Historical (H) ones and blank ones (removed in expert review) are not.
+    shapes = [shape(f["geometry"]).buffer(0) for f in feats if f["properties"]["presence"] in ("P", "X")]
+    if not shapes:
+        raise RangeError(f"EBAR range map {p['rangemapid']} for {name} has no present or expected ecoshape")
+    geometry = fit(unary_union(shapes), 0.02, 1e-4)
+    created = time.strftime("%Y-%m-%d", time.gmtime(p["rangedate"] / 1000))
+    national = p["rangemapscope"] != "G"
+    src = (f"NatureServe Canada, Ecosystem-based Automated Range (EBAR), range map {p['rangemapid']}, "
+           f"{p['rangestage']}, {p['natureserveexplorerurl'] or EBAR[:-8]}. EBAR © NatureServe Canada 2026, "
+           f"CC BY 4.0. {'Range within Canada only. ' if national else ''}Union of the ecoshapes coded "
+           "present or expected, historical and removed ones left out. Simplified, holes filled.")
+    return geometry, created, src, "NatureServe Canada", "CC-BY-4.0", "natureserve-ebar", "canada" if national else None
 
 
 def dfo_meta() -> dict:
@@ -185,13 +221,13 @@ def write_references(refs: list[dict]) -> None:
                                      indent=2) + "\n")
 
 
-def import_one(name: str, fn, meta: dict, force: bool) -> int:
+def import_one(name: str, fn, slug: str, meta: dict, force: bool) -> int:
     key = gbif_key(name)
-    if force or not list((RANGES_DIR / str(key)).glob("*.geojson")):
-        geometry, created, src, author, lic, slug = fn(name, meta)
-        path = RANGES_DIR / str(key) / f"{slug}.geojson"
+    path = RANGES_DIR / str(key) / f"{slug}.geojson"
+    if force or not path.exists():
+        geometry, created, src, author, lic, _, coverage = fn(name, meta)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(doc(name, key, geometry, author, created, src, lic)) + "\n")
+        path.write_text(json.dumps(doc(name, key, geometry, author, created, src, lic, coverage)) + "\n")
         try:
             load_range(path)  # same checks as CI
         except RangeError:
@@ -204,14 +240,15 @@ def import_one(name: str, fn, meta: dict, force: bool) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--offline", action="store_true", help="no-op")
-    ap.add_argument("--force", action="store_true", help="re-import existing taxa")
+    ap.add_argument("--force", action="store_true", help="re-import existing source files")
     args = ap.parse_args()
     if args.offline:
         return 0
     meta, refs, fails = dfo_meta(), [], 0
-    for name, fn in [(n, gap) for n in GAP_TAXA] + [(n, dfo) for n in DFO_TAXA]:
+    for name, fn, slug in ([(n, gap, "usgs-gap") for n in GAP_TAXA] + [(n, dfo, "dfo-sara") for n in DFO_TAXA]
+                           + [(n, ebar, "natureserve-ebar") for n in EBAR_TAXA]):
         try:
-            key = import_one(name, fn, meta, args.force)
+            key = import_one(name, fn, slug, meta, args.force)
             ref = inat_reference(key, name)
             refs += [ref] if ref else []
         except (RangeError, requests.RequestException, StopIteration, OSError) as e:

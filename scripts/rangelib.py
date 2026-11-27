@@ -180,7 +180,7 @@ NOREPLY = re.compile(r"^(?:\d+\+)?([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)@use
                      re.IGNORECASE)
 
 
-PUBLISHERS = frozenset({"USGS GAP", "Fisheries and Oceans Canada"})
+PUBLISHERS = frozenset({"USGS GAP", "Fisheries and Oceans Canada", "NatureServe Canada"})
 
 
 def imported_source(meta: dict) -> str | None:
